@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>重大交通事故通報系統 - 新竹區監理所</title>
+  <style>
+    :root {
+      --bg-color: #f8f9fa;
+      --card-bg: #ffffff;
+      --user-msg-bg: #e3f2fd;
+      --ai-msg-bg: #f1f3f4;
+      --primary-color: #1a73e8;
+      --border-color: #e0e0e0;
+      --danger-color: #d93025;
+      --time-color: #70757a;
+      --token-bg: #e8f0fe;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background-color: var(--bg-color);
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* 頂部標題 */
+    header {
+      background-color: var(--card-bg);
+      border-bottom: 1px solid var(--border-color);
+      padding: 12px 20px;
+      text-align: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      position: relative;
+    }
+    header h1 { margin: 0; font-size: 1.2rem; color: #202124; }
+    header p { margin: 4px 0 0; font-size: 0.85rem; color: #5f6368; }
+
+    .reset-top-btn {
+      margin-top: 8px;
+      padding: 5px 12px;
+      background-color: #fff;
+      color: var(--danger-color);
+      border: 1px solid var(--danger-color);
+      border-radius: 4px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .reset-top-btn:hover { background-color: var(--danger-color); color: #fff; }
+
+    /* Token 與計費統計列 */
+    #token-bar {
+      background-color: var(--token-bg);
+      padding: 8px 12px;
+      text-align: center;
+      font-size: 0.82rem;
+      color: #174ea6;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .token-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    /* 對話區域 */
+    #chat-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      max-width: 800px;
+      width: 100%;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .message-row { display: flex; flex-direction: column; max-width: 85%; }
+    .message-row.user { align-self: flex-end; }
+    .message-row.ai { align-self: flex-start; width: 100%; }
+
+    .message-bubble {
+      padding: 14px 18px;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .user .message-bubble { background-color: var(--user-msg-bg); color: #0d47a1; border-bottom-right-radius: 2px; }
+    .ai .message-bubble { background-color: var(--ai-msg-bg); color: #202124; border: 1px solid var(--border-color); border-bottom-left-radius: 2px; }
+
+    /* 時間與 Token 標籤列 */
+    .message-info {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 0.75rem;
+      color: var(--time-color);
+      margin-top: 4px;
+      margin-bottom: 2px;
+    }
+    .user .message-info { justify-content: flex-end; }
+    .ai .message-info { justify-content: flex-start; }
+
+    .system-notice {
+      text-align: center;
+      color: #5f6368;
+      font-size: 0.85rem;
+      margin: 10px 0;
+      padding: 8px;
+      background-color: #e8f0fe;
+      border-radius: 6px;
+    }
+
+    .message-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .copy-btn {
+      background-color: #ffffff;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      padding: 4px 10px;
+      font-size: 0.8rem;
+      color: #3c4043;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.2s;
+    }
+    .copy-btn:hover { background-color: #f1f3f4; color: var(--primary-color); }
+
+    /* 輸入區域 */
+    footer {
+      background-color: var(--card-bg);
+      border-top: 1px solid var(--border-color);
+      padding: 10px 15px;
+      position: sticky;
+      bottom: 0;
+      z-index: 10;
+    }
+
+    .input-wrapper {
+      max-width: 800px;
+      margin: 0 auto;
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    textarea {
+      flex: 1;
+      min-height: 44px;
+      max-height: 300px;
+      height: 44px;
+      padding: 10px 14px;
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      font-size: 16px;
+      line-height: 1.5;
+      resize: none;
+      font-family: inherit;
+      outline: none;
+      box-sizing: border-box;
+      overflow-y: auto;
+      transition: border-color 0.2s;
+    }
+    textarea:focus { border-color: var(--primary-color); }
+
+    button.send-btn {
+      background-color: var(--primary-color);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      height: 44px;
+      padding: 0 18px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    button.send-btn:disabled { background-color: #ccc; cursor: not-allowed; }
+
+    .loading-dots span { animation: blink 1.4s infinite fill-mode; font-weight: bold; }
+    .loading-dots span:nth-child(2) { animation-delay: .2s; }
+    .loading-dots span:nth-child(3) { animation-delay: .4s; }
+    @keyframes blink { 0% { opacity: .2; } 20% { opacity: 1; } 100% { opacity: .2; } }
+
+    @media (max-width: 600px) {
+      header h1 { font-size: 1.05rem; }
+      #chat-container { padding: 12px; }
+      .message-row { max-width: 92%; }
+      footer { padding: 8px 10px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>新竹區監理所 - 重大交通事故通報格式化工具</h1>
+    <p>支援多輪資訊繼承 | 輸入「結案」或「reset」自動重置記憶</p>
+    <button class="reset-top-btn" onclick="resetConversation(true)">🔄 手動開立新案件 (清空歷史)</button>
+  </header>
+
+  <!-- Token 統計與計費面板 -->
+  <div id="token-bar">
+    <span class="token-item">📥 Input: <strong id="session-input-tokens">0</strong></span>
+    <span>|</span>
+    <span class="token-item">📤 Output: <strong id="session-output-tokens">0</strong></span>
+    <span>|</span>
+    <span class="token-item">🧠 Thinking Budget: <strong id="session-thinking-budget">0</strong></span>
+    <span>|</span>
+    <span class="token-item">📊 總計: <strong id="session-total-tokens">0</strong></span>
+    <span>|</span>
+    <span class="token-item">💰 預估費用: <strong id="session-cost">$0.000000 USD (NT$0.00)</strong></span>
+  </div>
+
+  <main id="chat-container"></main>
+
+  <footer>
+    <div class="input-wrapper">
+      <textarea id="userInput" placeholder="請貼上車禍通報資訊... (按 Enter 換行，點擊右側按鈕發送)"></textarea>
+      <button id="sendBtn" class="send-btn" onclick="sendMessage()">發送通報</button>
+    </div>
+  </footer>
+
+  <script>
+    const GAS_WEB_APP_URL = "";
+    const USD_TO_TWD = 32.0; // 預設美金對台幣匯率
+
+    /**
+     * 依據日期自動抓取 Gemini 3.6 Flash 的計費標準 (每 1M Tokens)
+     */
+    function getGemini36Prices() {
+      const now = new Date();
+      const cutoffDate = new Date('2027-01-01T00:00:00');
+      
+      if (now < cutoffDate) {
+        // 2026/12/31 前費率
+        return { inputPer1M: 0.75, outputPer1M: 3.75 };
+      } else {
+        // 2027/01/01 起費率
+        return { inputPer1M: 1.50, outputPer1M: 7.50 };
+      }
+    }
+
+    const chatContainer = document.getElementById('chat-container');
+    const userInput = document.getElementById('userInput');
+    const sendBtn = document.getElementById('sendBtn');
+    
+    // 統計 DOM 元素
+    const sessionInputTokensEl = document.getElementById('session-input-tokens');
+    const sessionOutputTokensEl = document.getElementById('session-output-tokens');
+    const sessionThinkingBudgetEl = document.getElementById('session-thinking-budget');
+    const sessionTotalTokensEl = document.getElementById('session-total-tokens');
+    const sessionCostEl = document.getElementById('session-cost');
+
+    let conversationHistory = [];
+
+    function autoResizeTextarea() {
+      userInput.style.height = 'auto';
+      const newHeight = Math.min(userInput.scrollHeight, 300);
+      userInput.style.height = newHeight + 'px';
+    }
+    userInput.addEventListener('input', autoResizeTextarea);
+
+    function getCurrentFormattedTime() {
+      const now = new Date();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const date = String(now.getDate()).padStart(2, '0');
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      return `${month}/${date} ${hours}:${minutes}`;
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      appendMessage('ai', '👋 你好！請貼上事故資訊。後續若有補充資料（如新增車號、駕駛人姓名），直接在下方輸入即可，我會自動更新通報簡訊內容。');
+    });
+
+    function resetConversation(showAlert = false) {
+      conversationHistory = [];
+      sessionInputTokensEl.innerText = '0';
+      sessionOutputTokensEl.innerText = '0';
+      sessionThinkingBudgetEl.innerText = '0';
+      sessionTotalTokensEl.innerText = '0';
+      sessionCostEl.innerText = '$0.000000 USD (NT$0.00)';
+      
+      userInput.style.height = '44px';
+      chatContainer.innerHTML = '';
+      appendMessage('ai', '🔄 已成功開立新案件！您可以開始輸入全新案件的事故資訊。');
+      if (showAlert) userInput.focus();
+    }
+
+    async function sendMessage() {
+      const text = userInput.value.trim();
+      if (!text) return;
+
+      const lowerText = text.toLowerCase();
+      const isResetCmd = (lowerText === '結案' || lowerText === 'reset' || lowerText === 'reest');
+
+      appendMessage('user', text);
+      conversationHistory.push({ role: "user", text: text });
+
+      userInput.value = '';
+      userInput.style.height = '44px';
+      userInput.disabled = true;
+      sendBtn.disabled = true;
+
+      const aiRowEl = appendMessage('ai', '<span class="loading-dots">處理中，請稍候<span>.</span><span>.</span><span>.</span></span>');
+      const aiBubbleTextEl = aiRowEl.querySelector('.message-text');
+      const aiTimeEl = aiRowEl.querySelector('.message-time');
+      const aiTokenEl = aiRowEl.querySelector('.message-token');
+
+      try {
+        const response = await fetch(GAS_WEB_APP_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ history: conversationHistory })
+        });
+
+        const data = await response.json();
+        const finishTimeStr = getCurrentFormattedTime();
+        aiTimeEl.innerText = finishTimeStr;
+
+        if (data.reply) {
+          aiBubbleTextEl.innerText = data.reply;
+
+          // 解析與更新 Token 使用量與費用
+          if (data.usage) {
+            const inputTokens = data.usage.inputTokens || 0;
+            const outputTokens = data.usage.outputTokens || 0;
+            const thinkingBudget = data.thinkingBudgetUsed || 0;
+            const totalTokens = data.usage.totalTokens || (inputTokens + outputTokens);
+
+            // 動態取得當前時間點對應的費率
+            const { inputPer1M, outputPer1M } = getGemini36Prices();
+
+            // 計算預估費用 (USD & TWD)
+            const inputCostUSD = (inputTokens / 1000000) * inputPer1M;
+            const outputCostUSD = (outputTokens / 1000000) * outputPer1M; // 包含 Thinking Tokens
+            const totalCostUSD = inputCostUSD + outputCostUSD;
+            const totalCostTWD = totalCostUSD * USD_TO_TWD;
+
+            // 更新頂部全域統計儀表板
+            sessionInputTokensEl.innerText = inputTokens.toLocaleString();
+            sessionOutputTokensEl.innerText = outputTokens.toLocaleString();
+            sessionThinkingBudgetEl.innerText = `${thinkingBudget.toLocaleString()} Tokens`;
+            sessionTotalTokensEl.innerText = totalTokens.toLocaleString();
+            sessionCostEl.innerText = `$${totalCostUSD.toFixed(6)} USD (NT$${totalCostTWD.toFixed(4)})`;
+
+            // 更新對話框底部的單次 Token 明細與思考預算標籤
+            aiTokenEl.innerText = `Token 明細: In ${inputTokens.toLocaleString()} | Out ${outputTokens.toLocaleString()} | 思考預算: ${thinkingBudget} | 總計 ${totalTokens.toLocaleString()}`;
+          }
+
+          if (isResetCmd) {
+            conversationHistory = [];
+            sessionInputTokensEl.innerText = '0';
+            sessionOutputTokensEl.innerText = '0';
+            sessionThinkingBudgetEl.innerText = '0';
+            sessionTotalTokensEl.innerText = '0';
+            sessionCostEl.innerText = '$0.000000 USD (NT$0.00)';
+            
+            const noticeEl = document.createElement('div');
+            noticeEl.className = 'system-notice';
+            noticeEl.innerText = "─── 本案已結案，對話記憶與 Token 統計已自動重置 ───";
+            chatContainer.appendChild(noticeEl);
+          } else {
+            conversationHistory.push({ role: "model", text: data.reply });
+          }
+
+          // 一鍵複製按鈕
+          const actionsEl = document.createElement('div');
+          actionsEl.className = 'message-actions';
+          const copyBtn = document.createElement('button');
+          copyBtn.className = 'copy-btn';
+          copyBtn.innerHTML = '📋 複製簡訊內容';
+          copyBtn.onclick = () => copyToClipboard(aiBubbleTextEl.innerText, copyBtn);
+          
+          actionsEl.appendChild(copyBtn);
+          aiRowEl.appendChild(actionsEl);
+
+        } else {
+          aiBubbleTextEl.innerText = "⚠️ 系統回傳格式異常：" + JSON.stringify(data);
+        }
+      } catch (error) {
+        aiTimeEl.innerText = getCurrentFormattedTime();
+        aiBubbleTextEl.innerText = "❌ 連線發生錯誤：" + error.message;
+      } finally {
+        userInput.disabled = false;
+        sendBtn.disabled = false;
+        userInput.focus();
+        scrollToBottom();
+      }
+    }
+
+    function appendMessage(sender, textHtml) {
+      const timeStr = getCurrentFormattedTime();
+      const row = document.createElement('div');
+      row.className = `message-row ${sender}`;
+
+      const bubble = document.createElement('div');
+      bubble.className = 'message-bubble';
+      const textSpan = document.createElement('span');
+      textSpan.className = 'message-text';
+      textSpan.innerHTML = textHtml;
+      bubble.appendChild(textSpan);
+
+      const infoEl = document.createElement('div');
+      infoEl.className = 'message-info';
+      
+      const timeEl = document.createElement('span');
+      timeEl.className = 'message-time';
+      timeEl.innerText = timeStr;
+      infoEl.appendChild(timeEl);
+
+      if (sender === 'ai') {
+        const tokenEl = document.createElement('span');
+        tokenEl.className = 'message-token';
+        infoEl.appendChild(tokenEl);
+      }
+
+      row.appendChild(bubble);
+      row.appendChild(infoEl);
+
+      chatContainer.appendChild(row);
+      scrollToBottom();
+      return row;
+    }
+
+    function scrollToBottom() {
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // 複製強化：支援相容性備援機制
+    function copyToClipboard(text, btnElement) {
+      const showSuccess = () => {
+        const originalText = btnElement.innerHTML;
+        btnElement.innerHTML = '✅ 已複製！';
+        btnElement.style.color = '#0f9d58';
+        setTimeout(() => {
+          btnElement.innerHTML = originalText;
+          btnElement.style.color = '';
+        }, 2000);
+      };
+
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(showSuccess).catch(() => fallbackCopy(text, showSuccess));
+      } else {
+        fallbackCopy(text, showSuccess);
+      }
+    }
+
+    function fallbackCopy(text, callback) {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.position = "fixed";
+      textArea.style.left = "-9999px";
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        callback();
+      } catch (err) {
+        alert("複製失敗，請手動全選複製。");
+      }
+      document.body.removeChild(textArea);
+    }
+  </script>
+</body>
+</html>
