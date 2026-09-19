@@ -64,7 +64,7 @@
       justify-content: center;
       align-items: center;
       flex-wrap: wrap;
-      gap: 12px;
+      gap: 10px;
     }
     .token-item {
       display: inline-flex;
@@ -213,21 +213,23 @@
 
   <header>
     <h1>新竹區監理所 - 重大交通事故通報格式化工具</h1>
-    <p>支援多輪資訊繼承 | 輸入「結案」或「reset」自動重置記憶</p>
-    <button class="reset-top-btn" onclick="resetConversation(true)">🔄 手動開立新案件 (清空歷史)</button>
+    <p>支援多輪資訊繼承 | 輸入「結案」或「reset」自動重置記憶與費用</p>
+    <button class="reset-top-btn" onclick="resetConversation(true)">🔄 手動開立新案件 (清空歷史與計費)</button>
   </header>
 
-  <!-- Token 統計與計費面板 -->
+  <!-- Token 統計與計費面板 (包含 Context Caching 與全額費用計算) -->
   <div id="token-bar">
-    <span class="token-item">📥 Input: <strong id="session-input-tokens">0</strong></span>
+    <span class="token-item">📥 一般 Input: <strong id="session-input-tokens">0</strong></span>
     <span>|</span>
-    <span class="token-item">📤 Output: <strong id="session-output-tokens">0</strong></span>
+    <span class="token-item">⚡ 快取 Cached: <strong id="session-cached-tokens">0</strong></span>
     <span>|</span>
-    <span class="token-item">🧠 Thinking Budget: <strong id="session-thinking-budget">0</strong></span>
+    <span class="token-item">📤 Output (含Thinking): <strong id="session-output-tokens">0</strong></span>
     <span>|</span>
-    <span class="token-item">📊 總計: <strong id="session-total-tokens">0</strong></span>
+    <span class="token-item">🧠 思考預算: <strong id="session-thinking-budget">0</strong></span>
     <span>|</span>
-    <span class="token-item">💰 預估費用: <strong id="session-cost">$0.000000 USD (NT$0.00)</strong></span>
+    <span class="token-item">📊 總 Tokens: <strong id="session-total-tokens">0</strong></span>
+    <span>|</span>
+    <span class="token-item">💰 累計總費用: <strong id="session-cost" style="color:#d93025; font-weight:bold;">$0.000000 USD (NT$0.00)</strong></span>
   </div>
 
   <main id="chat-container"></main>
@@ -241,7 +243,7 @@
 
   <script>
     const GAS_WEB_APP_URL = "https://winter-morning-9509-test05.b63431095.workers.dev";
-    const USD_TO_TWD = 32.0; // 預設美金對台幣匯率
+    const USD_TO_TWD = 32.0; // 美金對台幣匯率
 
     /**
      * 依據日期自動抓取 Gemini 3.6 Flash 的計費標準 (每 1M Tokens)
@@ -252,10 +254,18 @@
       
       if (now < cutoffDate) {
         // 2026/12/31 前費率
-        return { inputPer1M: 0.75, outputPer1M: 3.75 };
+        return { 
+          inputPer1M: 0.75, 
+          cachedPer1M: 0.075, 
+          outputPer1M: 3.75 
+        };
       } else {
         // 2027/01/01 起費率
-        return { inputPer1M: 1.50, outputPer1M: 7.50 };
+        return { 
+          inputPer1M: 1.50, 
+          cachedPer1M: 0.15, 
+          outputPer1M: 7.50 
+        };
       }
     }
 
@@ -265,6 +275,7 @@
     
     // 統計 DOM 元素
     const sessionInputTokensEl = document.getElementById('session-input-tokens');
+    const sessionCachedTokensEl = document.getElementById('session-cached-tokens');
     const sessionOutputTokensEl = document.getElementById('session-output-tokens');
     const sessionThinkingBudgetEl = document.getElementById('session-thinking-budget');
     const sessionTotalTokensEl = document.getElementById('session-total-tokens');
@@ -272,12 +283,31 @@
 
     let conversationHistory = [];
 
+    // 全域累計 Token 變數
+    let totalUncachedInputTokens = 0; // 一般非快取的 Input
+    let totalCachedTokens = 0;        // Context Caching 命中的 Input
+    let totalOutputTokens = 0;        // Output (包含 Thinking Tokens)
+    let totalThinkingBudget = 0;      // 思考預算設定值
+
     function autoResizeTextarea() {
       userInput.style.height = 'auto';
       const newHeight = Math.min(userInput.scrollHeight, 300);
       userInput.style.height = newHeight + 'px';
     }
     userInput.addEventListener('input', autoResizeTextarea);
+
+    // 需求 2：按 Enter 換行，僅能點擊按鈕或特定指令送出
+    userInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault(); // 阻止 Enter 直接送出
+        const start = userInput.selectionStart;
+        const end = userInput.selectionEnd;
+        // 插入換行符號
+        userInput.value = userInput.value.substring(0, start) + "\n" + userInput.value.substring(end);
+        userInput.selectionStart = userInput.selectionEnd = start + 1;
+        autoResizeTextarea();
+      }
+    });
 
     function getCurrentFormattedTime() {
       const now = new Date();
@@ -294,7 +324,15 @@
 
     function resetConversation(showAlert = false) {
       conversationHistory = [];
+      
+      // 重置全域累計數字
+      totalUncachedInputTokens = 0;
+      totalCachedTokens = 0;
+      totalOutputTokens = 0;
+      totalThinkingBudget = 0;
+
       sessionInputTokensEl.innerText = '0';
+      sessionCachedTokensEl.innerText = '0';
       sessionOutputTokensEl.innerText = '0';
       sessionThinkingBudgetEl.innerText = '0';
       sessionTotalTokensEl.innerText = '0';
@@ -302,7 +340,7 @@
       
       userInput.style.height = '44px';
       chatContainer.innerHTML = '';
-      appendMessage('ai', '🔄 已成功開立新案件！您可以開始輸入全新案件的事故資訊。');
+      appendMessage('ai', '🔄 已成功開立新案件！記憶與累積費用已重置，您可以開始輸入全新案件的事故資訊。');
       if (showAlert) userInput.focus();
     }
 
@@ -340,44 +378,51 @@
         if (data.reply) {
           aiBubbleTextEl.innerText = data.reply;
 
-          // 解析與更新 Token 使用量與費用
+          // 需求 1：精準解析並累計所有 Token 費用 (包含 Context Caching, Input, Output, Thinking)
           if (data.usage) {
-            const inputTokens = data.usage.inputTokens || 0;
-            const outputTokens = data.usage.outputTokens || 0;
-            const thinkingBudget = data.thinkingBudgetUsed || 0;
-            const totalTokens = data.usage.totalTokens || (inputTokens + outputTokens);
+            const currentTotalInput = data.usage.inputTokens || 0;
+            const currentCached = data.usage.cachedTokens || 0;
+            const currentUncachedInput = Math.max(0, currentTotalInput - currentCached);
+            const currentOutput = data.usage.outputTokens || 0;
+            const currentThinkingBudget = data.thinkingBudgetUsed || 0;
+            const currentTotal = data.usage.totalTokens || (currentTotalInput + currentOutput);
 
-            // 動態取得當前時間點對應的費率
-            const { inputPer1M, outputPer1M } = getGemini36Prices();
+            // 進行全記錄 Token 累加
+            totalUncachedInputTokens += currentUncachedInput;
+            totalCachedTokens += currentCached;
+            totalOutputTokens += currentOutput;
+            totalThinkingBudget += currentThinkingBudget;
+            
+            const grandTotalTokens = totalUncachedInputTokens + totalCachedTokens + totalOutputTokens;
 
-            // 計算預估費用 (USD & TWD)
-            const inputCostUSD = (inputTokens / 1000000) * inputPer1M;
-            const outputCostUSD = (outputTokens / 1000000) * outputPer1M; // 包含 Thinking Tokens
-            const totalCostUSD = inputCostUSD + outputCostUSD;
+            // 動態取得當前時間點對應的 1M Token 費率
+            const { inputPer1M, cachedPer1M, outputPer1M } = getGemini36Prices();
+
+            // 計算累積預估總費用 (USD & TWD)
+            const uncachedInputCostUSD = (totalUncachedInputTokens / 1000000) * inputPer1M;
+            const cachedInputCostUSD = (totalCachedTokens / 1000000) * cachedPer1M;
+            const outputCostUSD = (totalOutputTokens / 1000000) * outputPer1M; // 包含 Thinking Tokens
+            
+            const totalCostUSD = uncachedInputCostUSD + cachedInputCostUSD + outputCostUSD;
             const totalCostTWD = totalCostUSD * USD_TO_TWD;
 
-            // 更新頂部全域統計儀表板
-            sessionInputTokensEl.innerText = inputTokens.toLocaleString();
-            sessionOutputTokensEl.innerText = outputTokens.toLocaleString();
-            sessionThinkingBudgetEl.innerText = `${thinkingBudget.toLocaleString()} Tokens`;
-            sessionTotalTokensEl.innerText = totalTokens.toLocaleString();
+            // 更新頂部儀表板
+            sessionInputTokensEl.innerText = totalUncachedInputTokens.toLocaleString();
+            sessionCachedTokensEl.innerText = totalCachedTokens.toLocaleString();
+            sessionOutputTokensEl.innerText = totalOutputTokens.toLocaleString();
+            sessionThinkingBudgetEl.innerText = `${totalThinkingBudget.toLocaleString()}`;
+            sessionTotalTokensEl.innerText = grandTotalTokens.toLocaleString();
             sessionCostEl.innerText = `$${totalCostUSD.toFixed(6)} USD (NT$${totalCostTWD.toFixed(4)})`;
 
-            // 更新對話框底部的單次 Token 明細與思考預算標籤
-            aiTokenEl.innerText = `Token 明細: In ${inputTokens.toLocaleString()} | Out ${outputTokens.toLocaleString()} | 思考預算: ${thinkingBudget} | 總計 ${totalTokens.toLocaleString()}`;
+            // 單次訊息下方顯示當次詳細消耗
+            aiTokenEl.innerText = `當次: 一般In ${currentUncachedInput.toLocaleString()} | 快取In ${currentCached.toLocaleString()} | Out(含思考) ${currentOutput.toLocaleString()} | 預算: ${currentThinkingBudget}`;
           }
 
           if (isResetCmd) {
-            conversationHistory = [];
-            sessionInputTokensEl.innerText = '0';
-            sessionOutputTokensEl.innerText = '0';
-            sessionThinkingBudgetEl.innerText = '0';
-            sessionTotalTokensEl.innerText = '0';
-            sessionCostEl.innerText = '$0.000000 USD (NT$0.00)';
-            
+            resetConversation(false);
             const noticeEl = document.createElement('div');
             noticeEl.className = 'system-notice';
-            noticeEl.innerText = "─── 本案已結案，對話記憶與 Token 統計已自動重置 ───";
+            noticeEl.innerText = "─── 本案已結案，對話記憶與 Token 累積費用已自動重置 ───";
             chatContainer.appendChild(noticeEl);
           } else {
             conversationHistory.push({ role: "model", text: data.reply });
@@ -446,7 +491,6 @@
       chatContainer.scrollTop = chatContainer.scrollHeight;
     }
 
-    // 複製強化：支援相容性備援機制
     function copyToClipboard(text, btnElement) {
       const showSuccess = () => {
         const originalText = btnElement.innerHTML;
