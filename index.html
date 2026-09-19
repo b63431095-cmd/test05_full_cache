@@ -13,6 +13,7 @@
       --primary-color: #1a73e8;
       --border-color: #e0e0e0;
       --danger-color: #d93025;
+      --success-color: #188038;
       --time-color: #70757a;
       --token-bg: #e8f0fe;
     }
@@ -27,7 +28,7 @@
       height: 100vh;
     }
 
-    /* 頂部標題 */
+    /* 頂部標題與按鈕區 */
     header {
       background-color: var(--card-bg);
       border-bottom: 1px solid var(--border-color);
@@ -39,18 +40,42 @@
     header h1 { margin: 0; font-size: 1.2rem; color: #202124; }
     header p { margin: 4px 0 0; font-size: 0.85rem; color: #5f6368; }
 
-    .reset-top-btn {
-      margin-top: 8px;
-      padding: 5px 12px;
+    .header-btn-group {
+      margin-top: 10px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .top-btn {
+      padding: 6px 12px;
       background-color: #fff;
-      color: var(--danger-color);
-      border: 1px solid var(--danger-color);
       border-radius: 4px;
       font-size: 0.8rem;
+      font-weight: 500;
       cursor: pointer;
       transition: all 0.2s;
     }
+
+    .reset-top-btn {
+      color: var(--danger-color);
+      border: 1px solid var(--danger-color);
+    }
     .reset-top-btn:hover { background-color: var(--danger-color); color: #fff; }
+
+    .cache-start-btn {
+      color: var(--success-color);
+      border: 1px solid var(--success-color);
+    }
+    .cache-start-btn:hover { background-color: var(--success-color); color: #fff; }
+
+    .cache-stop-btn {
+      color: #e67c73;
+      border: 1px solid #e67c73;
+    }
+    .cache-stop-btn:hover { background-color: #d93025; color: #fff; }
 
     /* Token 與計費統計列 */
     #token-bar {
@@ -206,6 +231,7 @@
       #chat-container { padding: 12px; }
       .message-row { max-width: 92%; }
       footer { padding: 8px 10px; }
+      .header-btn-group { flex-direction: column; gap: 6px; }
     }
   </style>
 </head>
@@ -214,10 +240,15 @@
   <header>
     <h1>新竹區監理所 - 重大交通事故通報格式化工具_v01</h1>
     <p>支援多輪資訊繼承 | 輸入「結案」或「reset」自動重置記憶與費用</p>
-    <button class="reset-top-btn" onclick="resetConversation(true)">🔄 手動開立新案件 (清空歷史與計費)</button>
+    
+    <div class="header-btn-group">
+      <button class="top-btn reset-top-btn" onclick="resetConversation(true)">🔄 手動開立新案件 (清空歷史與計費)</button>
+      <button class="top-btn cache-start-btn" onclick="startCache()">🚀 開始建立 Cache</button>
+      <button class="top-btn cache-stop-btn" onclick="stopCache()">🗑️ 結束 Cache</button>
+    </div>
   </header>
 
-  <!-- Token 統計與計費面板 (包含 Context Caching 與全額費用計算) -->
+  <!-- Token 統計與計費面板 -->
   <div id="token-bar">
     <span class="token-item">📥 一般 Input: <strong id="session-input-tokens">0</strong></span>
     <span>|</span>
@@ -245,27 +276,14 @@
     const GAS_WEB_APP_URL = "https://winter-morning-9509-test05.b63431095.workers.dev";
     const USD_TO_TWD = 32.0; // 美金對台幣匯率
 
-    /**
-     * 依據日期自動抓取 Gemini 3.6 Flash 的計費標準 (每 1M Tokens)
-     */
     function getGemini36Prices() {
       const now = new Date();
       const cutoffDate = new Date('2027-01-01T00:00:00');
       
       if (now < cutoffDate) {
-        // 2026/12/31 前費率
-        return { 
-          inputPer1M: 0.75, 
-          cachedPer1M: 0.075, 
-          outputPer1M: 3.75 
-        };
+        return { inputPer1M: 0.75, cachedPer1M: 0.075, outputPer1M: 3.75 };
       } else {
-        // 2027/01/01 起費率
-        return { 
-          inputPer1M: 1.50, 
-          cachedPer1M: 0.15, 
-          outputPer1M: 7.50 
-        };
+        return { inputPer1M: 1.50, cachedPer1M: 0.15, outputPer1M: 7.50 };
       }
     }
 
@@ -284,10 +302,10 @@
     let conversationHistory = [];
 
     // 全域累計 Token 變數
-    let totalUncachedInputTokens = 0; // 一般非快取的 Input
-    let totalCachedTokens = 0;        // Context Caching 命中的 Input
-    let totalOutputTokens = 0;        // Output (包含 Thinking Tokens)
-    let totalThinkingBudget = 0;      // 思考預算設定值
+    let totalUncachedInputTokens = 0;
+    let totalCachedTokens = 0;
+    let totalOutputTokens = 0;
+    let totalThinkingBudget = 0;
 
     function autoResizeTextarea() {
       userInput.style.height = 'auto';
@@ -296,13 +314,11 @@
     }
     userInput.addEventListener('input', autoResizeTextarea);
 
-    // 需求 2：按 Enter 換行，僅能點擊按鈕或特定指令送出
     userInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault(); // 阻止 Enter 直接送出
+        e.preventDefault();
         const start = userInput.selectionStart;
         const end = userInput.selectionEnd;
-        // 插入換行符號
         userInput.value = userInput.value.substring(0, start) + "\n" + userInput.value.substring(end);
         userInput.selectionStart = userInput.selectionEnd = start + 1;
         autoResizeTextarea();
@@ -325,7 +341,6 @@
     function resetConversation(showAlert = false) {
       conversationHistory = [];
       
-      // 重置全域累計數字
       totalUncachedInputTokens = 0;
       totalCachedTokens = 0;
       totalOutputTokens = 0;
@@ -342,6 +357,50 @@
       chatContainer.innerHTML = '';
       appendMessage('ai', '🔄 已成功開立新案件！記憶與累積費用已重置，您可以開始輸入全新案件的事故資訊。');
       if (showAlert) userInput.focus();
+    }
+
+    // 🚀 手動開始建立 Cache 觸發函式
+    async function startCache() {
+      const aiRowEl = appendMessage('ai', '⚙️ 正在建立 Context Cache (系統提示詞與通報資料庫快取中)...');
+      try {
+        const response = await fetch(GAS_WEB_APP_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ action: "create_cache" })
+        });
+        const data = await response.json();
+        const aiBubbleTextEl = aiRowEl.querySelector('.message-text');
+        
+        if (data.success) {
+          aiBubbleTextEl.innerText = `✅ 快取建立成功！\n快取識別名稱：${data.cacheName}\n後續通報查詢將享有大幅折扣與極速回應！`;
+        } else {
+          aiBubbleTextEl.innerText = "❌ 建立 Context Cache 失敗：" + (data.error || JSON.stringify(data));
+        }
+      } catch (err) {
+        appendMessage('ai', "❌ 連線錯誤：" + err.message);
+      }
+    }
+
+    // 🗑️ 手動結束/刪除 Cache 觸發函式
+    async function stopCache() {
+      const aiRowEl = appendMessage('ai', '🧹 正在清除/結束 Context Cache 資源...');
+      try {
+        const response = await fetch(GAS_WEB_APP_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ action: "delete_cache" })
+        });
+        const data = await response.json();
+        const aiBubbleTextEl = aiRowEl.querySelector('.message-text');
+        
+        if (data.success) {
+          aiBubbleTextEl.innerText = `🗑️ ${data.message}`;
+        } else {
+          aiBubbleTextEl.innerText = "❌ 結束 Context Cache 失敗：" + (data.error || JSON.stringify(data));
+        }
+      } catch (err) {
+        appendMessage('ai', "❌ 連線錯誤：" + err.message);
+      }
     }
 
     async function sendMessage() {
@@ -368,7 +427,7 @@
         const response = await fetch(GAS_WEB_APP_URL, {
           method: "POST",
           headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify({ history: conversationHistory })
+          body: JSON.stringify({ action: "chat", history: conversationHistory })
         });
 
         const data = await response.json();
@@ -378,7 +437,6 @@
         if (data.reply) {
           aiBubbleTextEl.innerText = data.reply;
 
-          // 需求 1：精準解析並累計所有 Token 費用 (包含 Context Caching, Input, Output, Thinking)
           if (data.usage) {
             const currentTotalInput = data.usage.inputTokens || 0;
             const currentCached = data.usage.cachedTokens || 0;
@@ -387,7 +445,6 @@
             const currentThinkingBudget = data.thinkingBudgetUsed || 0;
             const currentTotal = data.usage.totalTokens || (currentTotalInput + currentOutput);
 
-            // 進行全記錄 Token 累加
             totalUncachedInputTokens += currentUncachedInput;
             totalCachedTokens += currentCached;
             totalOutputTokens += currentOutput;
@@ -395,18 +452,15 @@
             
             const grandTotalTokens = totalUncachedInputTokens + totalCachedTokens + totalOutputTokens;
 
-            // 動態取得當前時間點對應的 1M Token 費率
             const { inputPer1M, cachedPer1M, outputPer1M } = getGemini36Prices();
 
-            // 計算累積預估總費用 (USD & TWD)
             const uncachedInputCostUSD = (totalUncachedInputTokens / 1000000) * inputPer1M;
             const cachedInputCostUSD = (totalCachedTokens / 1000000) * cachedPer1M;
-            const outputCostUSD = (totalOutputTokens / 1000000) * outputPer1M; // 包含 Thinking Tokens
+            const outputCostUSD = (totalOutputTokens / 1000000) * outputPer1M;
             
             const totalCostUSD = uncachedInputCostUSD + cachedInputCostUSD + outputCostUSD;
             const totalCostTWD = totalCostUSD * USD_TO_TWD;
 
-            // 更新頂部儀表板
             sessionInputTokensEl.innerText = totalUncachedInputTokens.toLocaleString();
             sessionCachedTokensEl.innerText = totalCachedTokens.toLocaleString();
             sessionOutputTokensEl.innerText = totalOutputTokens.toLocaleString();
@@ -414,7 +468,6 @@
             sessionTotalTokensEl.innerText = grandTotalTokens.toLocaleString();
             sessionCostEl.innerText = `$${totalCostUSD.toFixed(6)} USD (NT$${totalCostTWD.toFixed(4)})`;
 
-            // 單次訊息下方顯示當次詳細消耗
             aiTokenEl.innerText = `當次: 一般In ${currentUncachedInput.toLocaleString()} | 快取In ${currentCached.toLocaleString()} | Out(含思考) ${currentOutput.toLocaleString()} | 預算: ${currentThinkingBudget}`;
           }
 
@@ -428,7 +481,6 @@
             conversationHistory.push({ role: "model", text: data.reply });
           }
 
-          // 一鍵複製按鈕
           const actionsEl = document.createElement('div');
           actionsEl.className = 'message-actions';
           const copyBtn = document.createElement('button');
