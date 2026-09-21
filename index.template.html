@@ -28,7 +28,6 @@
       height: 100vh;
     }
 
-    /* 頂部標題與按鈕區 */
     header {
       background-color: var(--card-bg);
       border-bottom: 1px solid var(--border-color);
@@ -59,25 +58,15 @@
       transition: all 0.2s;
     }
 
-    .reset-top-btn {
-      color: var(--danger-color);
-      border: 1px solid var(--danger-color);
-    }
+    .reset-top-btn { color: var(--danger-color); border: 1px solid var(--danger-color); }
     .reset-top-btn:hover { background-color: var(--danger-color); color: #fff; }
 
-    .cache-start-btn {
-      color: var(--success-color);
-      border: 1px solid var(--success-color);
-    }
+    .cache-start-btn { color: var(--success-color); border: 1px solid var(--success-color); }
     .cache-start-btn:hover { background-color: var(--success-color); color: #fff; }
 
-    .cache-stop-btn {
-      color: #e67c73;
-      border: 1px solid #e67c73;
-    }
+    .cache-stop-btn { color: #e67c73; border: 1px solid #e67c73; }
     .cache-stop-btn:hover { background-color: #d93025; color: #fff; }
 
-    /* Token 與計費統計列 */
     #token-bar {
       background-color: var(--token-bg);
       padding: 8px 12px;
@@ -91,13 +80,8 @@
       flex-wrap: wrap;
       gap: 10px;
     }
-    .token-item {
-      display: inline-flex;
-      align-items: center;
-      gap: 3px;
-    }
+    .token-item { display: inline-flex; align-items: center; gap: 3px; }
 
-    /* 對話區域 */
     #chat-container {
       flex: 1;
       overflow-y: auto;
@@ -125,7 +109,6 @@
     .user .message-bubble { background-color: var(--user-msg-bg); color: #0d47a1; border-bottom-right-radius: 2px; }
     .ai .message-bubble { background-color: var(--ai-msg-bg); color: #202124; border: 1px solid var(--border-color); border-bottom-left-radius: 2px; }
 
-    /* 時間與 Token 標籤列 */
     .message-info {
       display: flex;
       flex-wrap: wrap;
@@ -148,12 +131,7 @@
       border-radius: 6px;
     }
 
-    .message-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-top: 4px;
-    }
+    .message-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 
     .copy-btn {
       background-color: #ffffff;
@@ -170,7 +148,6 @@
     }
     .copy-btn:hover { background-color: #f1f3f4; color: var(--primary-color); }
 
-    /* 輸入區域 */
     footer {
       background-color: var(--card-bg);
       border-top: 1px solid var(--border-color);
@@ -248,7 +225,6 @@
     </div>
   </header>
 
-  <!-- Token 統計與計費面板 -->
   <div id="token-bar">
     <span class="token-item">📥 一般 Input: <strong id="session-input-tokens">0</strong></span>
     <span>|</span>
@@ -274,12 +250,11 @@
 
   <script>
     const GAS_WEB_APP_URL = "___GAS_URL_PLACEHOLDER___";
-    const USD_TO_TWD = 32.0; // 美金對台幣匯率
+    const USD_TO_TWD = 32.0; 
 
     function getGemini36Prices() {
       const now = new Date();
       const cutoffDate = new Date('2027-01-01T00:00:00');
-      
       if (now < cutoffDate) {
         return { inputPer1M: 0.75, cachedPer1M: 0.075, outputPer1M: 3.75 };
       } else {
@@ -291,7 +266,6 @@
     const userInput = document.getElementById('userInput');
     const sendBtn = document.getElementById('sendBtn');
     
-    // 統計 DOM 元素
     const sessionInputTokensEl = document.getElementById('session-input-tokens');
     const sessionCachedTokensEl = document.getElementById('session-cached-tokens');
     const sessionOutputTokensEl = document.getElementById('session-output-tokens');
@@ -301,7 +275,6 @@
 
     let conversationHistory = [];
 
-    // 全域累計 Token 變數
     let totalUncachedInputTokens = 0;
     let totalCachedTokens = 0;
     let totalOutputTokens = 0;
@@ -359,7 +332,6 @@
       if (showAlert) userInput.focus();
     }
 
-    // 🚀 手動開始建立 Cache 觸發函式
     async function startCache() {
       const aiRowEl = appendMessage('ai', '⚙️ 正在建立 Context Cache (系統提示詞與通報資料庫快取中)...');
       try {
@@ -381,7 +353,6 @@
       }
     }
 
-    // 🗑️ 手動結束/刪除 Cache 觸發函式
     async function stopCache() {
       const aiRowEl = appendMessage('ai', '🧹 正在清除/結束 Context Cache 資源...');
       try {
@@ -443,7 +414,6 @@
             const currentUncachedInput = Math.max(0, currentTotalInput - currentCached);
             const currentOutput = data.usage.outputTokens || 0;
             const currentThinkingBudget = data.thinkingBudgetUsed || 0;
-            const currentTotal = data.usage.totalTokens || (currentTotalInput + currentOutput);
 
             totalUncachedInputTokens += currentUncachedInput;
             totalCachedTokens += currentCached;
